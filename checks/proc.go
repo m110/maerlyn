@@ -16,7 +16,11 @@ const (
 
 type CpuFetcher struct {
 	command  chan int
-	response chan float64
+	response chan Result
+}
+
+type Result struct {
+	Total float64 `json:"percent"`
 }
 
 type cpuStats struct {
@@ -27,7 +31,7 @@ type cpuStats struct {
 
 func NewCpuFetcher() *CpuFetcher {
 	command := make(chan int)
-	response := make(chan float64)
+	response := make(chan Result)
 
 	proc := &CpuFetcher{
 		command:  command,
@@ -45,7 +49,7 @@ func (c *CpuFetcher) Stop() {
 	c.command <- COMMAND_STOP
 }
 
-func (c *CpuFetcher) GetTotal() float64 {
+func (c *CpuFetcher) Get() Result {
 	c.command <- COMMAND_GET
 	return <-c.response
 }
@@ -65,21 +69,21 @@ func (c *CpuFetcher) fetcher() {
 			continue
 		}
 
-		totalDiff := float64(cpu.Total - previous.Total)
-		idleDiff := float64(cpu.Idle - previous.Idle)
-
-		percentage := (totalDiff - idleDiff) / totalDiff
-
 		select {
 		case cmd := <-c.command:
 			switch cmd {
 			case COMMAND_STOP:
 				return
 			case COMMAND_GET:
-				c.response <- percentage
+				totalDiff := float64(cpu.Total - previous.Total)
+				idleDiff := float64(cpu.Idle - previous.Idle)
+				percentage := (totalDiff - idleDiff) / totalDiff
+				c.response <- Result{percentage}
 			}
 		case <-time.After(time.Second * FETCH_INTERVAL):
 		}
+
+		previous = cpu
 	}
 }
 

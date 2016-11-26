@@ -1,14 +1,20 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"github.com/m110/maerlyn/checks"
+	"net/http"
 )
 
 func main() {
 	fetcher := checks.NewCpuFetcher()
-
 	fetcher.Start()
-	fmt.Println("CPU:", fetcher.GetTotal())
-	fetcher.Stop()
+	defer fetcher.Stop()
+
+	http.HandleFunc("/cpu", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		result := fetcher.Get()
+		json.NewEncoder(w).Encode(result)
+	})
+	http.ListenAndServe(":8080", nil)
 }
