@@ -6,7 +6,6 @@ import (
 )
 
 const STAT_PATH = "/proc/stat"
-const WARMUP_INTERVAL = 1
 const FETCH_INTERVAL = 5
 
 const (
@@ -20,13 +19,17 @@ type CpuFetcher struct {
 }
 
 type Result struct {
-	Total float64 `json:"percent"`
+	Total  float64 `json:"total"`
+	User   float64 `json:"user"`
+	System float64 `json:"system"`
 }
 
 type cpuStats struct {
 	Total   uint64
 	Idle    uint64
 	NonIdle uint64
+	User    uint64
+	System  uint64
 }
 
 func NewCpuFetcher() *CpuFetcher {
@@ -55,18 +58,23 @@ func (c *CpuFetcher) Get() Result {
 }
 
 func (c *CpuFetcher) fetcher() {
-	var previous cpuStats
+	var previous, current cpuStats
+	lastFetch := time.Now()
+
+	current, _ = c.cpuTime()
+	time.Sleep(time.Second * FETCH_INTERVAL)
 
 	for {
-		cpu, err := c.cpuTime()
-		if err != nil {
-			continue
-		}
+		now := time.Now()
+		if now.Sub(lastFetch) > time.Second*FETCH_INTERVAL {
+			var err error
 
-		if previous.Idle == 0 {
-			previous = cpu
-			time.Sleep(time.Second * WARMUP_INTERVAL)
-			continue
+			previous = current
+			current, err = c.cpuTime()
+			if err != nil {
+				continue
+			}
+			lastFetch = now
 		}
 
 		select {
@@ -75,15 +83,24 @@ func (c *CpuFetcher) fetcher() {
 			case COMMAND_STOP:
 				return
 			case COMMAND_GET:
-				totalDiff := float64(cpu.Total - previous.Total)
-				idleDiff := float64(cpu.Idle - previous.Idle)
-				percentage := (totalDiff - idleDiff) / totalDiff
-				c.response <- Result{percentage}
+				totalDiff := float64(current.Total - previous.Total)
+				idleDiff := float64(current.Idle - previous.Idle)
+				userDiff := float64(current.User - previous.User)
+				systemDiff := float64(current.System - previous.System)
+
+				total := (totalDiff - idleDiff) / totalDiff
+				user := userDiff / totalDiff
+				system := systemDiff / totalDiff
+
+				result := Result{
+					Total:  total,
+					User:   user,
+					System: system,
+				}
+				c.response <- result
 			}
 		case <-time.After(time.Second * FETCH_INTERVAL):
 		}
-
-		previous = cpu
 	}
 }
 
@@ -102,6 +119,8 @@ func (c *CpuFetcher) cpuTime() (cpuStats, error) {
 		Total:   idle + nonIdle,
 		Idle:    idle,
 		NonIdle: nonIdle,
+		User:    cpu.User,
+		System:  cpu.System,
 	}
 
 	return stats, nil
