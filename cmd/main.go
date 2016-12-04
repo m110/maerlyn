@@ -13,7 +13,12 @@ func main() {
 
 	http.HandleFunc("/cpu", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		result := fetcher.Get()
+		result := fetcher.GetCpu()
+		json.NewEncoder(w).Encode(result)
+	})
+	http.HandleFunc("/mem", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		result := fetcher.GetMem()
 		json.NewEncoder(w).Encode(result)
 	})
 	http.ListenAndServe(":8080", nil)
